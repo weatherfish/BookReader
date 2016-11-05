@@ -2,17 +2,24 @@ package com.justwayward.reader.ui.activity;
 
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.support.v7.widget.SwitchCompat;
 import android.widget.CompoundButton;
 import android.widget.TextView;
 
 import com.justwayward.reader.R;
 import com.justwayward.reader.base.BaseActivity;
+import com.justwayward.reader.base.Constant;
+import com.justwayward.reader.bean.support.RefreshCollectionListEvent;
 import com.justwayward.reader.component.AppComponent;
 import com.justwayward.reader.component.DaggerMainComponent;
 import com.justwayward.reader.manager.CacheManager;
 import com.justwayward.reader.manager.SettingManager;
+import com.justwayward.reader.utils.SharedPreferencesUtil;
+
+import org.greenrobot.eventbus.EventBus;
 
 import butterknife.Bind;
 import butterknife.OnClick;
@@ -22,12 +29,19 @@ import butterknife.OnClick;
  */
 public class SettingActivity extends BaseActivity {
 
+    public static void startActivity(Context context) {
+        context.startActivity(new Intent(context, SettingActivity.class));
+    }
+
     @Bind(R.id.mTvSort)
     TextView mTvSort;
+    @Bind(R.id.tvFlipStyle)
+    TextView mTvFlipStyle;
     @Bind(R.id.tvCacheSize)
     TextView mTvCacheSize;
     @Bind(R.id.noneCoverCompat)
     SwitchCompat noneCoverCompat;
+
 
     @Override
     public int getLayoutId() {
@@ -63,7 +77,10 @@ public class SettingActivity extends BaseActivity {
 
             }
         }).start();
-
+        mTvSort.setText(getResources().getStringArray(R.array.setting_dialog_sort_choice)[
+                SharedPreferencesUtil.getInstance().getBoolean(Constant.ISBYUPDATESORT, true) ? 0 : 1]);
+        mTvFlipStyle.setText(getResources().getStringArray(R.array.setting_dialog_style_choice)[
+                SharedPreferencesUtil.getInstance().getInt(Constant.FLIP_STYLE, 1)]);
     }
 
 
@@ -82,13 +99,34 @@ public class SettingActivity extends BaseActivity {
     public void onClickBookShelfSort() {
         new AlertDialog.Builder(mContext)
                 .setTitle("书架排序方式")
-                .setSingleChoiceItems(getResources().getStringArray(R.array.setting_dialog_choice), 0, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        mTvSort.setText(getResources().getStringArray(R.array.setting_dialog_choice)[which]);
-                        dialog.dismiss();
-                    }
-                })
+                .setSingleChoiceItems(getResources().getStringArray(R.array.setting_dialog_sort_choice),
+                        SharedPreferencesUtil.getInstance().getBoolean(Constant.ISBYUPDATESORT, true) ? 0 : 1,
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                mTvSort.setText(getResources().getStringArray(R.array.setting_dialog_sort_choice)[which]);
+                                SharedPreferencesUtil.getInstance().putBoolean(Constant.ISBYUPDATESORT, which == 0);
+                                EventBus.getDefault().post(new RefreshCollectionListEvent());
+                                dialog.dismiss();
+                            }
+                        })
+                .create().show();
+    }
+
+    @OnClick(R.id.rlFlipStyle)
+    public void onClickFlipStyle() {
+        new AlertDialog.Builder(mContext)
+                .setTitle("阅读页翻页效果")
+                .setSingleChoiceItems(getResources().getStringArray(R.array.setting_dialog_style_choice),
+                        SharedPreferencesUtil.getInstance().getInt(Constant.FLIP_STYLE, 1),
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                mTvFlipStyle.setText(getResources().getStringArray(R.array.setting_dialog_style_choice)[which]);
+                                SharedPreferencesUtil.getInstance().putInt(Constant.FLIP_STYLE, which);
+                                dialog.dismiss();
+                            }
+                        })
                 .create().show();
     }
 
@@ -99,20 +137,15 @@ public class SettingActivity extends BaseActivity {
 
     @OnClick(R.id.cleanCache)
     public void onClickCleanCache() {
-        final boolean selected[] = {true};
+        //默认不勾选清空书架列表，防手抖！！
+        final boolean selected[] = {true, false};
         new AlertDialog.Builder(mContext)
                 .setTitle("清除缓存")
                 .setCancelable(true)
-                .setMultiChoiceItems(new String[]{"同时删除阅读记录"}, selected, new DialogInterface.OnMultiChoiceClickListener() {
+                .setMultiChoiceItems(new String[]{"删除阅读记录", "清空书架列表"}, selected, new DialogInterface.OnMultiChoiceClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which, boolean isChecked) {
-                        switch (which) {
-                            case 0:
-                                selected[0] = true;
-                                break;
-                            default:
-                                break;
-                        }
+                        selected[which] = isChecked;
                     }
                 })
                 .setPositiveButton("确定", new DialogInterface.OnClickListener() {
@@ -121,12 +154,13 @@ public class SettingActivity extends BaseActivity {
                         new Thread(new Runnable() {
                             @Override
                             public void run() {
-                                CacheManager.getInstance().clearCache(selected[0]);
+                                CacheManager.getInstance().clearCache(selected[0], selected[1]);
                                 final String cacheSize = CacheManager.getInstance().getCacheSize();
                                 runOnUiThread(new Runnable() {
                                     @Override
                                     public void run() {
                                         mTvCacheSize.setText(cacheSize);
+                                        EventBus.getDefault().post(new RefreshCollectionListEvent());
                                     }
                                 });
                             }

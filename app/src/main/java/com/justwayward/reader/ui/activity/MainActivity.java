@@ -44,6 +44,7 @@ import com.google.gson.Gson;
 import com.justwayward.reader.R;
 import com.justwayward.reader.base.BaseActivity;
 import com.justwayward.reader.base.Constant;
+import com.justwayward.reader.bean.support.RefreshCollectionListEvent;
 import com.justwayward.reader.bean.user.TencentLoginResult;
 import com.justwayward.reader.component.AppComponent;
 import com.justwayward.reader.component.DaggerMainComponent;
@@ -65,6 +66,7 @@ import com.tencent.tauth.IUiListener;
 import com.tencent.tauth.Tencent;
 import com.tencent.tauth.UiError;
 
+import org.greenrobot.eventbus.EventBus;
 import org.json.JSONObject;
 
 import java.lang.reflect.Method;
@@ -214,18 +216,22 @@ public class MainActivity extends BaseActivity implements MainContract.View, Log
                 popupWindow.showAtLocation(mCommonToolbar, Gravity.CENTER, 0, 0);
                 break;
             case R.id.action_sync_bookshelf:
-                if (popupWindow == null) {
+                showDialog();
+                mPresenter.syncBookShelf();
+               /* if (popupWindow == null) {
                     popupWindow = new LoginPopupWindow(this);
                     popupWindow.setLoginTypeListener(this);
                 }
-                popupWindow.showAtLocation(mCommonToolbar, Gravity.CENTER, 0, 0);
+                popupWindow.showAtLocation(mCommonToolbar, Gravity.CENTER, 0, 0);*/
                 break;
             case R.id.action_scan_local_book:
+                ScanLocalBookActivity.startActivity(this);
                 break;
             case R.id.action_wifi_book:
-                startActivity(new Intent(mContext,WifiBookActivity.class));
+                WifiBookActivity.startActivity(this);
                 break;
             case R.id.action_feedback:
+                FeedbackActivity.startActivity(this);
                 break;
             case R.id.action_night_mode:
                 if (SharedPreferencesUtil.getInstance().getBoolean(Constant.ISNIGHT, false)) {
@@ -238,7 +244,7 @@ public class MainActivity extends BaseActivity implements MainContract.View, Log
                 recreate();
                 break;
             case R.id.action_settings:
-                startActivity(new Intent(this, SettingActivity.class));
+                SettingActivity.startActivity(this);
                 break;
             default:
                 break;
@@ -289,12 +295,19 @@ public class MainActivity extends BaseActivity implements MainContract.View, Log
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        DownloadBookService.cancel();
         stopService(new Intent(this, DownloadBookService.class));
     }
 
     @Override
     public void loginSuccess() {
         ToastUtils.showSingleToast("登陆成功");
+    }
+
+    @Override
+    public void syncBookShelfCompleted() {
+        dismissDialog();
+        EventBus.getDefault().post(new RefreshCollectionListEvent());
     }
 
     @Override
@@ -310,7 +323,8 @@ public class MainActivity extends BaseActivity implements MainContract.View, Log
 
     @Override
     public void showError() {
-
+        ToastUtils.showSingleToast("同步异常");
+        dismissDialog();
     }
 
     @Override

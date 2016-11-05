@@ -38,11 +38,14 @@ public class Recommend extends Base {
         public boolean isTop = false;
         public boolean isSeleted = false;
         public boolean showCheckBox = false;
+        public boolean isFromSD = false;
+        public String path = "";
         public int latelyFollower;
         public double retentionRatio;
-        public String updated;
+        public String updated = "";
         public int chaptersCount;
         public String lastChapter;
+        public String recentReadingTime = "";
 
         @Override
         public boolean equals(Object obj) {

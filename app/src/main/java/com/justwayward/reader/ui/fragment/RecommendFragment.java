@@ -21,6 +21,7 @@ import com.justwayward.reader.bean.support.DownloadMessage;
 import com.justwayward.reader.bean.support.DownloadProgress;
 import com.justwayward.reader.bean.support.DownloadQueue;
 import com.justwayward.reader.bean.support.RefreshCollectionListEvent;
+import com.justwayward.reader.bean.support.UserSexChooseFinishedEvent;
 import com.justwayward.reader.component.AppComponent;
 import com.justwayward.reader.component.DaggerMainComponent;
 import com.justwayward.reader.manager.CollectionsManager;
@@ -53,7 +54,6 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
     @Bind(R.id.tvDelete)
     TextView tvDelete;
 
-    private boolean isHasCollections = false;
     private boolean isSelectAll = false;
 
     private List<BookToc.mixToc.Chapters> chaptersList = new ArrayList<>();
@@ -89,6 +89,12 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
                 });
             }
         });
+        mRecyclerView.getEmptyView().findViewById(R.id.btnToAdd).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ((MainActivity) activity).setCurrentItem(2);
+            }
+        });
         onRefresh();
     }
 
@@ -104,6 +110,11 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
     public void showRecommendList(List<Recommend.RecommendBooks> list) {
         mAdapter.clear();
         mAdapter.addAll(list);
+        //推荐列表默认加入收藏
+        for (Recommend.RecommendBooks bean : list) {
+            //TODO 此处可优化：批量加入收藏->加入前需先判断是否收藏过
+            CollectionsManager.getInstance().add(bean);
+        }
     }
 
     @Override
@@ -124,25 +135,20 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void showDownProgress(DownloadProgress progress) {
-        mRecyclerView.setTipViewText(String.format(progress.isAlreadyDownload ?
-                        getString(R.string.book_read_alreday_download) :
-                        getString(R.string.book_read_download_progress),
-                chaptersList.get(progress.progress - 1).title
-                , progress.progress, chaptersList.size()));
+        mRecyclerView.setTipViewText(progress.message);
     }
 
     @Override
     public void onItemClick(int position) {
         if (isVisible(llBatchManagement)) //批量管理时，屏蔽点击事件
             return;
-        ReadActivity.startActivity(activity, mAdapter.getItem(position));
+        ReadActivity.startActivity(activity, mAdapter.getItem(position), mAdapter.getItem(position).isFromSD);
     }
 
     @Override
     public boolean onItemLongClick(int position) {
-        //没有收藏时，屏蔽长按事件，因为置顶和删除等功能不好实现
         //批量管理时，屏蔽长按事件
-        if (!isHasCollections || isVisible(llBatchManagement)) return false;
+        if (isVisible(llBatchManagement)) return false;
         showLongClickDialog(position);
         return false;
     }
@@ -153,48 +159,84 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
      * @param position
      */
     private void showLongClickDialog(final int position) {
+        final boolean isTop = CollectionsManager.getInstance().isTop(mAdapter.getItem(position)._id);
+        String[] items;
+        DialogInterface.OnClickListener listener;
+        if (mAdapter.getItem(position).isFromSD) {
+            items = getResources().getStringArray(R.array.recommend_item_long_click_choice_local);
+            listener = new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    switch (which) {
+                        case 0:
+                            //置顶、取消置顶
+                            CollectionsManager.getInstance().top(mAdapter.getItem(position)._id, !isTop);
+                            break;
+                        case 1:
+                            //删除
+                            List<Recommend.RecommendBooks> removeList = new ArrayList<>();
+                            removeList.add(mAdapter.getItem(position));
+                            showDeleteCacheDialog(removeList);
+                            break;
+                        case 2:
+                            //批量管理
+                            showBatchManagementLayout();
+                            break;
+                        default:
+                            break;
+                    }
+                    dialog.dismiss();
+                }
+            };
+        } else {
+            items = getResources().getStringArray(R.array.recommend_item_long_click_choice);
+            listener = new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    switch (which) {
+                        case 0:
+                            //置顶、取消置顶
+                            CollectionsManager.getInstance().top(mAdapter.getItem(position)._id, !isTop);
+                            break;
+                        case 1:
+                            //书籍详情
+                            BookDetailActivity.startActivity(activity,
+                                    mAdapter.getItem(position)._id);
+                            break;
+                        case 2:
+                            //移入养肥区
+                            ToastUtils.showToast("正在拼命开发中...");
+                            break;
+                        case 3:
+                            //缓存全本
+                            if (mAdapter.getItem(position).isFromSD) {
+                                ToastUtils.showSingleToast("本地文件不支持该选项哦");
+                            } else {
+                                showDialog();
+                                mPresenter.getTocList(mAdapter.getItem(position)._id);
+                            }
+                            break;
+                        case 4:
+                            //删除
+                            List<Recommend.RecommendBooks> removeList = new ArrayList<>();
+                            removeList.add(mAdapter.getItem(position));
+                            showDeleteCacheDialog(removeList);
+                            break;
+                        case 5:
+                            //批量管理
+                            showBatchManagementLayout();
+                            break;
+                        default:
+                            break;
+                    }
+                    dialog.dismiss();
+                }
+            };
+        }
+        if (isTop) items[0] = getString(R.string.cancle_top);
         new AlertDialog.Builder(activity)
                 .setTitle(mAdapter.getItem(position).title)
-                .setItems(getResources().getStringArray(R.array.recommend_item_long_click_choice),
-                        new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                switch (which) {
-                                    case 0:
-                                        //置顶
-                                        CollectionsManager.getInstance().top(mAdapter.getItem(position)._id);
-                                        onRefresh();
-                                        break;
-                                    case 1:
-                                        //书籍详情
-                                        BookDetailActivity.startActivity(activity,
-                                                mAdapter.getItem(position)._id);
-                                        break;
-                                    case 2:
-                                        //移入养肥区
-                                        ToastUtils.showToast("正在拼命开发中...");
-                                        break;
-                                    case 3:
-                                        //缓存全本
-                                        showDialog();
-                                        mPresenter.getTocList(mAdapter.getItem(position)._id);
-                                        break;
-                                    case 4:
-                                        //删除
-                                        List<Recommend.RecommendBooks> removeList = new ArrayList<>();
-                                        removeList.add(mAdapter.getItem(position));
-                                        showDeleteCacheDialog(removeList);
-                                        break;
-                                    case 5:
-                                        //批量管理
-                                        showBatchManagementLayout();
-                                        break;
-                                    default:
-                                        break;
-                                }
-                                dialog.dismiss();
-                            }
-                        })
+                .setItems(items, listener)
                 .setNegativeButton(null, null)
                 .create().show();
     }
@@ -239,10 +281,6 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
                                 for (Recommend.RecommendBooks bean : removeList) {
                                     mAdapter.remove(bean);
                                 }
-                                if (mAdapter.getCount() == 0) {
-                                    //没有收藏时，刷新页面
-                                    onRefresh();
-                                }
                                 if (isVisible(llBatchManagement)) {
                                     //批量管理完成后，隐藏批量管理布局并刷新页面
                                     goneBatchManagementAndRefreshUI();
@@ -285,10 +323,8 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
     @OnClick(R.id.tvSelectAll)
     public void selectAll() {
         isSelectAll = !isSelectAll;
-        tvSelectAll.setText(isSelectAll ? activity.getString(R.string.cancel_selected_all) :
-                activity.getString(R.string.selected_all));
-        for (Recommend.RecommendBooks bean :
-                mAdapter.getAllData()) {
+        tvSelectAll.setText(isSelectAll ? activity.getString(R.string.cancel_selected_all) : activity.getString(R.string.selected_all));
+        for (Recommend.RecommendBooks bean : mAdapter.getAllData()) {
             bean.isSeleted = isSelectAll;
         }
         mAdapter.notifyDataSetChanged();
@@ -297,11 +333,8 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
     @OnClick(R.id.tvDelete)
     public void delete() {
         List<Recommend.RecommendBooks> removeList = new ArrayList<>();
-        for (Recommend.RecommendBooks bean :
-                mAdapter.getAllData()) {
-            if (bean.isSeleted) {
-                removeList.add(bean);
-            }
+        for (Recommend.RecommendBooks bean : mAdapter.getAllData()) {
+            if (bean.isSeleted) removeList.add(bean);
         }
         if (removeList.isEmpty()) {
             ToastUtils.showToast(activity.getString(R.string.has_not_selected_delete_book));
@@ -314,24 +347,25 @@ public class RecommendFragment extends BaseRVFragment<RecommendPresenter, Recomm
     public void onRefresh() {
         super.onRefresh();
         gone(llBatchManagement);
-        List<Recommend.RecommendBooks> data = CollectionsManager.getInstance().getCollectionList();
-        if (data != null && !data.isEmpty()) {
-            //有收藏时，只显示收藏
-            isHasCollections = true;
-            mAdapter.clear();
-            mAdapter.addAll(data);
-            mRecyclerView.setRefreshing(false);
-        } else {
-            //没有收藏时，显示推荐
-            isHasCollections = false;
-            mPresenter.getRecommendList();
-        }
+        List<Recommend.RecommendBooks> data = CollectionsManager.getInstance().getCollectionListBySort();
+        mAdapter.clear();
+        mAdapter.addAll(data);
+        //不加下面这句代码会导致，添加本地书籍的时候，部分书籍添加后直接崩溃
+        //报错：Scrapped or attached views may not be recycled. isScrap:false isAttached:true
+        mAdapter.notifyDataSetChanged();
+        mRecyclerView.setRefreshing(false);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void RefreshCollectionList(RefreshCollectionListEvent event) {
         mRecyclerView.setRefreshing(true);
         onRefresh();
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void UserSexChooseFinished(UserSexChooseFinishedEvent event) {
+        //首次进入APP，选择性别后，获取推荐列表
+        mPresenter.getRecommendList();
     }
 
     @Override

@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.text.TextUtils;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
@@ -21,7 +22,6 @@ import com.justwayward.reader.bean.HotReview;
 import com.justwayward.reader.bean.Recommend;
 import com.justwayward.reader.bean.RecommendBookList;
 import com.justwayward.reader.bean.support.RefreshCollectionIconEvent;
-import com.justwayward.reader.bean.support.RefreshCollectionListEvent;
 import com.justwayward.reader.common.OnRvItemClickListener;
 import com.justwayward.reader.component.AppComponent;
 import com.justwayward.reader.component.DaggerBookComponent;
@@ -182,10 +182,13 @@ public class BookDetailActivity extends BaseActivity implements BookDetailContra
         mTvAuthor.setText(String.format(getString(R.string.book_detail_author), data.author));
         mTvCatgory.setText(String.format(getString(R.string.book_detail_category), data.cat));
         mTvWordCount.setText(FormatUtils.formatWordCount(data.wordCount));
-        mTvLatelyUpdate.setText(FormatUtils.formatDate(data.updated));
+        mTvLatelyUpdate.setText(FormatUtils.getDescriptionTimeFromDateString(data.updated));
         mTvLatelyFollower.setText(String.valueOf(data.latelyFollower));
-        mTvRetentionRatio.setText(String.valueOf(data.retentionRatio));
-        mTvSerializeWordCount.setText(String.valueOf(data.serializeWordCount));
+        mTvRetentionRatio.setText(TextUtils.isEmpty(data.retentionRatio) ?
+                "-" : String.format(getString(R.string.book_detail_retention_ratio),
+                data.retentionRatio));
+        mTvSerializeWordCount.setText(data.serializeWordCount < 0 ? "-" :
+                String.valueOf(data.serializeWordCount));
 
         tagList.clear();
         tagList.addAll(data.tags);
@@ -201,6 +204,7 @@ public class BookDetailActivity extends BaseActivity implements BookDetailContra
         recommendBooks._id = data._id;
         recommendBooks.cover = data.cover;
         recommendBooks.lastChapter = data.lastChapter;
+        recommendBooks.updated = data.updated;
 
         refreshCollectionIcon();
     }
@@ -297,7 +301,6 @@ public class BookDetailActivity extends BaseActivity implements BookDetailContra
                     R.string.book_detail_has_remove_the_book_shelf), recommendBooks.title));
             initCollection(true);
         }
-        EventBus.getDefault().post(new RefreshCollectionListEvent());
     }
 
     private void initCollection(boolean coll) {
@@ -322,6 +325,7 @@ public class BookDetailActivity extends BaseActivity implements BookDetailContra
 
     @OnClick(R.id.btnRead)
     public void onClickRead() {
+        if (recommendBooks == null) return;
         ReadActivity.startActivity(this, recommendBooks);
     }
 

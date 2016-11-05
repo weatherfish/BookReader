@@ -1,4 +1,4 @@
-package com.justwayward.reader.view.ReadView;
+package com.justwayward.reader.view.readview;
 
 /**
  * @author yuyh.
